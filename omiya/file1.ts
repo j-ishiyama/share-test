@@ -9,8 +9,8 @@ function func1(aaa: string): void {
 }
 
 
-function func2(aaa: string[]): void {
-    console.log(aaa);
+function func2(s: string[]): void {
+    console.log(s);
 }
 
 function func3(aaa: string[][]): void {
