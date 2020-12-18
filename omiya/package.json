@@ -1,7 +1,7 @@
 {
   "name": "omiya",
   "version": "0.1.0",
-  "description": "npx ts-node-dev --respawn file1.ts",
+  "description": "aaa",
   "main": "index.js",
   "dependencies": {
     "ts-node-dev": "^1.1.1",
