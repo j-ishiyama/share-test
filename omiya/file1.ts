@@ -1,94 +1,158 @@
-import { SSL_OP_SINGLE_DH_USE } from "constants";
-
-function hello(name: string): string {
-    return `Hello, ${name}!`;
-};
-
-function func1(aaa: string): void {
-    console.log(aaa);
+// デバッグとか用。
+function mySleep(ms: number, id: number, s: string): Promise<number> {
+  return new Promise<number>((resolve) => {
+    setTimeout(() => {
+      console.log(id + " : " + s);
+      resolve(id);
+    }, ms);
+  });
 }
 
+// アップロード制御用マネージャークラス。
+// 疑似シングルトン : アップロード処理中は一つだけ存在するが、処理が終わったら不要なインスタンスになるので破棄できるようなクラス。
+class UploadManager {
+  private static instance: UploadManager; // 自身。シングルトンなのでこれが重要。
 
-function func2(s: string[]): void {
-    console.log(s);
-}
+  private maxParallelNum: number = 0; // なんパラレルでのアップロードが可能か、最大アップロード可能パラレル件数。
 
-function func3(aaa: string[][]): void {
-    console.log(aaa);
-}
+  private uploadGroup: Item[][] = [];   // アップロード対象オブジェクト群
+  private currentUploadGroupNum: number = 0;    // とりあえずいま現在アップロードしているグループのId。自分で用意しておいてあれだけど、何に使うのだろうか。
+  private nowUploadItems: Item[] = [];  // いま現在アップロードしているアイテムの一覧。内部的な検索用のイメージ。「uploadGroup」を全件検索するのもあれだし。
 
-function func4(aaa: string[][]): void {
-    aaa.forEach(bbb => {
-        bbb.forEach(ccc => {
-            console.log(ccc);
-        })
-        console.log("--------------");
-    })
-}
+  private uploading: boolean = false;   // アップロード処理中を示すフラグ。
 
-function func5(aaa: string[][]): void {
-
-    // ここ、うまくshift()したらメモリ減るかな？
-    console.log(aaa.length);
-    while (aaa.length > 0) {
-        var bbb = aaa.shift();
-        while (bbb?.length) {
-            console.log(bbb?.shift());
-        }
-        console.log(aaa.length);
+  constructor() {
+    // アップロード件数のパラレル可能数などを、APIで取得します。
+    try {
+      // 当たり前だけどこんなに簡単じゃないわね↓
+      this.maxParallelNum = this.getUploadInfo();
+    } catch (e) {
+      // 1-1. エラー時はアップロードまで辿り着かないってことなので終了でいいです。
+      // コンストラクタでエラーのお作法ってあるのか不明。あればそれを採用で。（未調査）C++には定番があるので気にしてます。
     }
-}
+  }
 
-// console.log(hello("TypeScript"));
-
-// func1("function1");
-
-// console.log(["aaa", "bbb"]);
-// func2(["aaa", "bbb"]);
-
-// console.log([["aaa", "bbb"], ["111", "222"]]);
-// func3([["aaa", "bbb"], ["111", "222"]]);
-
-
-// var sss: string[] = [];
-// sss.push("111", "222");
-// console.log(sss);
-// func2(sss);
-
-// var mmm: string[][] = [];
-// var iii: string[] = [];
-// var lll: string[] = [];
-// iii.push("aaa", "bbb");
-// mmm.push(iii);
-// lll.push("111", "222");
-// mmm.push(lll);
-// func3(mmm);
-// func4(mmm);
-
-// var mmm: string[][] = [];
-// var iii: string[] = [];
-// iii.push("aaa");
-// iii.push("bbb");
-// mmm.push(iii);
-// iii = [];
-// iii.push("ccccc", "444444444");
-// mmm.push(iii);
-// func5(mmm);
-
-// ここから連想配列
-
-// var hash1: { [key: string]: string[]} = {};
-// hash1['yyyymmdd'] = ["aaa", "bbb"];
-// console.log(hash1);
-
-class MyClass {
-    private name:string = "";
-    
-    constructor(name:string) {
-        this.name=name;
+  // シングルトンの定番。
+  static getInstance() {
+    // 定番の。
+    if (!UploadManager.instance) {
+      UploadManager.instance = new UploadManager();
     }
+
+    return UploadManager.instance;
+  }
+
+  // アップロード件数のパラレル可能数などを、APIで取得します。
+  private getUploadInfo() {
+    // 1. APIで取得して情報返却。
+    return 3;
+  }
+
+  // アップロード処理を開始しなさいの指示の受け取り口。
+  public async uploadStart(): Promise<void> {
+    // 多重指示はガード。
+    if (this.uploading) {
+      return console.log("now uploading...");
+    }
+    console.log("upload start");
+    this.uploading = true;
+
+    // ここをめちゃがんばって工夫すれば、ビジーループのアップロード処理が完成します。
+    // ですがちょっとよろしくないので、オブザーバブルに変更します。次の自分の作業で。
+    for (let i = 0; i < 5; i++) {}
+    await this.uploadGroup[0][0].uploadStart();
+    await this.uploadGroup[1][0].uploadStart();
+
+    // キャンセル実験
+    this.uploadGroup[1][0].cancel();
+    this.uploading = false;
+  }
+
+  // アップロード対象の配列を入れる。
+  public setUploadGroup(items: Item[]) {
+    this.uploadGroup.push(items);
+  }
+  // デバッグ用。配列内容を出してるだけ。
+  public displayUploadGroup() {
+    console.log(this.uploadGroup);
+  }
 }
 
-var hhh: {[key: string]:MyClass[]} = {};
-hhh['yyyymmdd'] = [new MyClass("aaa"), new MyClass("bbb")];
-console.log(hhh);
+class Item {
+  // キャンセル用フラグ : 外からこれがtrueにされたらアップロード中の各処理中に参照しているので止める。
+  private cancelFlag = false;
+
+  // いったんpath（upload対象のディレクトリ）、name（ファイル名）、size（ファイルサイズ）でも。
+  constructor(
+    private path: string,
+    private name: string,
+    private size: number
+  ) {}
+
+  // 非同期命令受け取り口。アップロード処理を呼び出したら返却します。
+  public async uploadStart(): Promise<void> {
+    this.doUpload();
+  }
+
+  // アイテムごとのアップロードを行う場所。
+  public async doUpload() {
+    // ダミーで適当にwaitさせてます。本当ならDB操作とかAWSへの問い合わせとかを頑張るところ。
+
+    // GigaCCDB更新
+
+    await mySleep(500, this.size, "GigaCCDB更新");
+
+    if (this.cancelFlag) {
+      return console.log(this.size + " : Cancel 1");
+    }
+
+    // AWSへ実体をアップロード
+    await mySleep(2000, this.size, "AWSへ実体をアップロード");
+
+    if (this.cancelFlag) {
+      return console.log(this.size + " : Cancel 2");
+    }
+
+    // 完了
+    await mySleep(1000, this.size, "完了しまして");
+  }
+
+  // キャンセル指示
+  public cancel() {
+    console.log("cancel指示です。");
+    this.cancelFlag = true;
+  }
+}
+
+// ###### アップロードボタンを押したときの処理みたいな感じです↓
+
+// ###### とはいえまずは準備
+let items: Item[] = [
+  new Item("/aaa/bbb", "1.jpg", 1),
+  new Item("/aaa/bbb", "2.jpg", 2),
+  new Item("/aaa/bbb", "3.jpg", 3),
+  new Item("/aaa/bbb", "4.jpg", 4),
+  new Item("/aaa/bbb", "5.jpg", 5),
+  new Item("/aaa/bbb", "6.jpg", 6),
+  new Item("/aaa/bbb", "7.jpg", 7),
+  new Item("/aaa/bbb", "8.jpg", 8),
+];
+let uploadManager = UploadManager.getInstance();
+uploadManager.setUploadGroup(items);
+items = [];
+items = [
+  new Item("/あああ/いいい", "11.jpg", 11),
+  new Item("/あああ/いいい", "22.jpg", 22),
+  new Item("/あああ/いいい", "33.jpg", 33),
+  new Item("/あああ/いいい", "44.jpg", 44),
+  new Item("/あああ/いいい", "55.jpg", 55),
+  new Item("/あああ/いいい", "66.jpg", 66),
+  new Item("/あああ/いいい", "77.jpg", 77),
+  new Item("/あああ/いいい", "88.jpg", 88),
+];
+uploadManager.setUploadGroup(items);
+//uploadManager.displayUploadGroup();
+
+// アップろ開始
+uploadManager.uploadStart();
+uploadManager.uploadStart();
